@@ -2,6 +2,7 @@ import { Pool } from "pg";
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
 });
 
 export async function initDB() {
@@ -9,12 +10,15 @@ export async function initDB() {
     await pool.query("CREATE EXTENSION IF NOT EXISTS pgcrypto");
   } catch {}
 
+  try {
+    await pool.query("CREATE EXTENSION IF NOT EXISTS postgis");
+  } catch {}
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      id UUID PRIMARY KEY,
       name TEXT NOT NULL,
       email TEXT NOT NULL UNIQUE,
-      password TEXT NOT NULL,
       role TEXT NOT NULL
     )
   `);
@@ -44,6 +48,8 @@ export async function initDB() {
       delivery_id UUID NULL REFERENCES users(id),
       store_id UUID NOT NULL REFERENCES stores(id),
       status TEXT NOT NULL,
+      destination GEOGRAPHY(POINT, 4326),
+      delivery_position GEOGRAPHY(POINT, 4326),
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
   `);

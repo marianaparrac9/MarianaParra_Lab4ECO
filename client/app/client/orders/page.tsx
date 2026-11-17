@@ -5,6 +5,7 @@ import Link from "next/link";
 import Guard from "../../../components/Guard";
 import Shell from "../../../components/Shell";
 import { api } from "../../../lib/api";
+import { statusClass, statusLabel } from "../../../lib/status";
 
 export default function ClientOrdersPage() {
   const [orders, setOrders] = useState<any[]>([]);
@@ -21,17 +22,19 @@ export default function ClientOrdersPage() {
       <Shell title="mis ordenes">
         <Link href="/client">volver a tiendas</Link>
         {error ? <p className="err">{error}</p> : null}
+        {orders.length === 0 ? <p className="hint">todavia no tienes ordenes</p> : null}
         {orders.map((o) => (
           <div className="card" key={o.id}>
             <div className="item">
               <strong>{o.store_name}</strong>
-              <span className="badge">{o.status}</span>
+              <span className={statusClass(o.status)}>{statusLabel(o.status)}</span>
             </div>
             {o.items.map((i: any) => (
               <p key={i.id}>
                 {i.name} x {i.quantity}
               </p>
             ))}
+            <Link href={"/client/orders/" + o.id}>ver en el mapa</Link>
           </div>
         ))}
       </Shell>

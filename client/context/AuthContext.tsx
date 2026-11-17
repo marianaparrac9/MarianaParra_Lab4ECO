@@ -30,10 +30,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setReady(true);
       return;
     }
+    const saved = localStorage.getItem("user");
+    if (saved) setUser(JSON.parse(saved));
     api("/auth/me")
-      .then((data) => setUser(data.user))
+      .then((data) => {
+        localStorage.setItem("user", JSON.stringify(data.user));
+        setUser(data.user);
+      })
       .catch(() => {
         localStorage.removeItem("token");
+        localStorage.removeItem("user");
         setUser(null);
       })
       .finally(() => setReady(true));
@@ -45,6 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       body: JSON.stringify({ email, password }),
     });
     localStorage.setItem("token", data.token);
+    localStorage.setItem("user", JSON.stringify(data.user));
     setUser(data.user);
     return data.user as User;
   }
@@ -55,12 +62,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       body: JSON.stringify(body),
     });
     localStorage.setItem("token", data.token);
+    localStorage.setItem("user", JSON.stringify(data.user));
     setUser(data.user);
     return data.user as User;
   }
 
   function logout() {
     localStorage.removeItem("token");
+    localStorage.removeItem("user");
     setUser(null);
   }
 

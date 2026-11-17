@@ -20,13 +20,14 @@ app.use("/api/orders", orderRoutes);
 
 const port = Number(process.env.PORT || 4000);
 
-initDB()
-  .then(() => {
-    app.listen(port, () => {
-      console.log("server on " + port);
-    });
-  })
-  .catch((err) => {
-    console.log("db error", err);
-    process.exit(1);
+initDB().catch((err) => {
+  console.log("db error", err);
+});
+
+if (!process.env.VERCEL) {
+  app.listen(port, () => {
+    console.log("server on " + port);
   });
+}
+
+export default app;

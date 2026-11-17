@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Guard from "../../components/Guard";
 import Shell from "../../components/Shell";
 import { api } from "../../lib/api";
+import { supabase } from "../../lib/supabase";
+import { statusClass, statusLabel } from "../../lib/status";
 
 export default function StoreAdminPage() {
   const [store, setStore] = useState<any>(null);
@@ -12,6 +14,7 @@ export default function StoreAdminPage() {
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
   async function load() {
     try {
@@ -31,6 +34,23 @@ export default function StoreAdminPage() {
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    if (!store?.id) return;
+    const channel = supabase
+      .channel("store-" + store.id)
+      .on("broadcast", { event: "order-update" }, ({ payload }) => {
+        if (payload.status === "delivered") {
+          setMessage("el repartidor llego, un pedido quedo entregado");
+        }
+        api("/orders/store").then(setOrders).catch(() => {});
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [store?.id]);
 
   async function toggle() {
     setError("");
@@ -75,6 +95,11 @@ export default function StoreAdminPage() {
     <Guard role="store">
       <Shell title="administrador de tienda">
         {error ? <p className="err">{error}</p> : null}
+        {message ? (
+          <div className="toast" onClick={() => setMessage("")}>
+            {message}
+          </div>
+        ) : null}
         <div className="card">
           <h3>{store?.name}</h3>
           <p>estado: {store?.is_open ? "abierta" : "cerrada"}</p>
@@ -110,12 +135,13 @@ export default function StoreAdminPage() {
 
         <div className="card">
           <h3>ordenes de la tienda</h3>
+          <p className="hint">se actualizan solas en tiempo real</p>
           {orders.map((o) => (
             <div className="item" key={o.id}>
               <span>
                 {o.items.map((i: any) => i.name + " x" + i.quantity).join(", ")}
               </span>
-              <span className="badge">{o.status}</span>
+              <span className={statusClass(o.status)}>{statusLabel(o.status)}</span>
             </div>
           ))}
         </div>

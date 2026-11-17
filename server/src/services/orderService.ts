@@ -1,10 +1,18 @@
 import { pool } from "../db";
 import { getStoreById, getStoreByOwner } from "./storeService";
 
+const fields = `id, client_id, delivery_id, store_id, status, created_at,
+  ST_Y(destination::geometry) AS dest_lat,
+  ST_X(destination::geometry) AS dest_lng,
+  ST_Y(delivery_position::geometry) AS pos_lat,
+  ST_X(delivery_position::geometry) AS pos_lng`;
+
 export async function createOrder(
   clientId: string,
   storeId: string,
-  items: { product_id: string; quantity: number }[]
+  items: { product_id: string; quantity: number }[],
+  lat: number,
+  lng: number
 ) {
   const store = await getStoreById(storeId);
   if (!store) {
@@ -16,13 +24,18 @@ export async function createOrder(
   if (!items || !items.length) {
     throw new Error("la orden no tiene productos");
   }
+  if (typeof lat !== "number" || typeof lng !== "number") {
+    throw new Error("selecciona el punto de entrega en el mapa");
+  }
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
     const orderRes = await client.query(
-      "INSERT INTO orders (client_id, delivery_id, store_id, status) VALUES ($1, NULL, $2, $3) RETURNING *",
-      [clientId, storeId, "waiting_for_deliver"]
+      `INSERT INTO orders (client_id, delivery_id, store_id, status, destination)
+       VALUES ($1, NULL, $2, $3, ST_SetSRID(ST_MakePoint($4, $5), 4326)::geography)
+       RETURNING id`,
+      [clientId, storeId, "waiting_for_deliver", lng, lat]
     );
     const order = orderRes.rows[0];
 
@@ -55,7 +68,7 @@ export async function createOrder(
 
 export async function getOrdersByClient(clientId: string) {
   const result = await pool.query(
-    "SELECT * FROM orders WHERE client_id = $1 ORDER BY created_at DESC",
+    `SELECT ${fields} FROM orders WHERE client_id = $1 ORDER BY created_at DESC`,
     [clientId]
   );
   return Promise.all(result.rows.map((row) => attachItems(row)));
@@ -67,7 +80,7 @@ export async function getOrdersByStore(userId: string) {
     throw new Error("tienda no encontrada");
   }
   const result = await pool.query(
-    "SELECT * FROM orders WHERE store_id = $1 ORDER BY created_at DESC",
+    `SELECT ${fields} FROM orders WHERE store_id = $1 ORDER BY created_at DESC`,
     [store.id]
   );
   return Promise.all(result.rows.map((row) => attachItems(row)));
@@ -75,7 +88,7 @@ export async function getOrdersByStore(userId: string) {
 
 export async function getAvailableOrders() {
   const result = await pool.query(
-    "SELECT * FROM orders WHERE delivery_id IS NULL AND status = $1 ORDER BY created_at DESC",
+    `SELECT ${fields} FROM orders WHERE delivery_id IS NULL AND status = $1 ORDER BY created_at DESC`,
     ["waiting_for_deliver"]
   );
   return Promise.all(result.rows.map((row) => attachItems(row)));
@@ -83,14 +96,14 @@ export async function getAvailableOrders() {
 
 export async function getDeliveryHistory(deliveryId: string) {
   const result = await pool.query(
-    "SELECT * FROM orders WHERE delivery_id = $1 ORDER BY created_at DESC",
+    `SELECT ${fields} FROM orders WHERE delivery_id = $1 ORDER BY created_at DESC`,
     [deliveryId]
   );
   return Promise.all(result.rows.map((row) => attachItems(row)));
 }
 
 export async function getOrderById(orderId: string) {
-  const result = await pool.query("SELECT * FROM orders WHERE id = $1", [orderId]);
+  const result = await pool.query(`SELECT ${fields} FROM orders WHERE id = $1`, [orderId]);
   if (!result.rows[0]) {
     throw new Error("orden no encontrada");
   }
@@ -107,7 +120,10 @@ export async function acceptOrder(deliveryId: string, orderId: string) {
   }
 
   const result = await pool.query(
-    "UPDATE orders SET delivery_id = $1, status = $2 WHERE id = $3 AND delivery_id IS NULL RETURNING *",
+    `UPDATE orders
+     SET delivery_id = $1, status = $2, delivery_position = ST_Project(destination, 120, radians(225))
+     WHERE id = $3 AND delivery_id IS NULL
+     RETURNING ${fields}`,
     [deliveryId, "in_progress", orderId]
   );
   if (!result.rows[0]) {
@@ -126,24 +142,35 @@ export async function rejectOrder(deliveryId: string, orderId: string) {
   }
 
   const result = await pool.query(
-    "UPDATE orders SET delivery_id = NULL, status = $1 WHERE id = $2 RETURNING *",
+    `UPDATE orders SET delivery_id = NULL, delivery_position = NULL, status = $1 WHERE id = $2 RETURNING ${fields}`,
     ["waiting_for_deliver", orderId]
   );
   return attachItems(result.rows[0]);
 }
 
-export async function deliverOrder(deliveryId: string, orderId: string) {
+export async function updatePosition(deliveryId: string, orderId: string, lat: number, lng: number) {
   const order = await getOrderById(orderId);
   if (order.delivery_id !== deliveryId) {
-    throw new Error("no puedes entregar esta orden");
+    throw new Error("no puedes mover esta orden");
   }
   if (order.status !== "in_progress") {
-    throw new Error("la orden no esta en progreso");
+    throw new Error("la orden no esta en entrega");
+  }
+  if (typeof lat !== "number" || typeof lng !== "number") {
+    throw new Error("posicion invalida");
   }
 
   const result = await pool.query(
-    "UPDATE orders SET status = $1 WHERE id = $2 RETURNING *",
-    ["delivered", orderId]
+    `UPDATE orders
+     SET delivery_position = ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
+         status = CASE
+           WHEN ST_DWithin(ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, destination, 10)
+           THEN 'delivered'
+           ELSE status
+         END
+     WHERE id = $3
+     RETURNING ${fields}`,
+    [lng, lat, orderId]
   );
   return attachItems(result.rows[0]);
 }

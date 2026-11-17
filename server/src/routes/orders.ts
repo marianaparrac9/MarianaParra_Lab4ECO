@@ -3,13 +3,13 @@ import { allowRoles, auth, AuthRequest } from "../middleware/auth";
 import {
   acceptOrder,
   createOrder,
-  deliverOrder,
   getAvailableOrders,
   getDeliveryHistory,
   getOrderById,
   getOrdersByClient,
   getOrdersByStore,
   rejectOrder,
+  updatePosition,
 } from "../services/orderService";
 import { getStoreByOwner } from "../services/storeService";
 
@@ -17,7 +17,13 @@ const router = Router();
 
 router.post("/", auth, allowRoles(["consumer"]), async (req: AuthRequest, res) => {
   try {
-    const order = await createOrder(req.user!.id, req.body.store_id, req.body.items);
+    const order = await createOrder(
+      req.user!.id,
+      req.body.store_id,
+      req.body.items,
+      req.body.lat,
+      req.body.lng
+    );
     res.json(order);
   } catch (err: any) {
     res.status(400).json({ error: err.message });
@@ -111,9 +117,9 @@ router.post("/:id/reject", auth, allowRoles(["delivery"]), async (req: AuthReque
   }
 });
 
-router.post("/:id/deliver", auth, allowRoles(["delivery"]), async (req: AuthRequest, res) => {
+router.patch("/:id/position", auth, allowRoles(["delivery"]), async (req: AuthRequest, res) => {
   try {
-    const order = await deliverOrder(req.user!.id, req.params.id);
+    const order = await updatePosition(req.user!.id, req.params.id, req.body.lat, req.body.lng);
     res.json(order);
   } catch (err: any) {
     res.status(400).json({ error: err.message });

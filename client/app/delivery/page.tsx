@@ -5,6 +5,7 @@ import Link from "next/link";
 import Guard from "../../components/Guard";
 import Shell from "../../components/Shell";
 import { api } from "../../lib/api";
+import { statusClass, statusLabel } from "../../lib/status";
 
 export default function DeliveryPage() {
   const [orders, setOrders] = useState<any[]>([]);
@@ -26,10 +27,11 @@ export default function DeliveryPage() {
         {error ? <p className="err">{error}</p> : null}
         <div className="card">
           <h3>ordenes disponibles</h3>
+          {orders.length === 0 ? <p className="hint">no hay ordenes por ahora</p> : null}
           {orders.map((o) => (
             <div className="item" key={o.id}>
               <span>
-                {o.store_name} - {o.status}
+                {o.store_name} <span className={statusClass(o.status)}>{statusLabel(o.status)}</span>
               </span>
               <Link href={"/delivery/" + o.id}>ver detalle</Link>
             </div>
@@ -40,7 +42,7 @@ export default function DeliveryPage() {
           {history.map((o) => (
             <div className="item" key={o.id}>
               <span>
-                {o.store_name} - {o.status}
+                {o.store_name} <span className={statusClass(o.status)}>{statusLabel(o.status)}</span>
               </span>
               <Link href={"/delivery/" + o.id}>abrir</Link>
             </div>
